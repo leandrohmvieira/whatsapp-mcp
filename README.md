@@ -86,25 +86,14 @@ Here's an example of what you can do when it's connected to Claude.
 
 ### Windows Compatibility
 
-If you're running this project on Windows, be aware that `go-sqlite3` requires **CGO to be enabled** in order to compile and work properly. By default, **CGO is disabled on Windows**, so you need to explicitly enable it and have a C compiler installed.
+The bridge uses a **pure-Go SQLite driver** ([`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite)), so **no C compiler and no CGO** are required. It builds and runs out of the box on Windows (and cross-compiles to other platforms) with the default `CGO_ENABLED=0`:
 
-#### Steps to get it working:
+```bash
+cd whatsapp-bridge
+go run main.go
+```
 
-1. **Install a C compiler**  
-   We recommend using [MSYS2](https://www.msys2.org/) to install a C compiler for Windows. After installing MSYS2, make sure to add the `ucrt64\bin` folder to your `PATH`.  
-   → A step-by-step guide is available [here](https://code.visualstudio.com/docs/cpp/config-mingw).
-
-2. **Enable CGO and run the app**
-
-   ```bash
-   cd whatsapp-bridge
-   go env -w CGO_ENABLED=1
-   go run main.go
-   ```
-
-Without this setup, you'll likely run into errors like:
-
-> `Binary was compiled with 'CGO_ENABLED=0', go-sqlite3 requires cgo to work.`
+> **Note:** Earlier versions used the cgo-based `go-sqlite3`, which required installing a C compiler (MSYS2) and setting `CGO_ENABLED=1` on Windows. That is no longer needed. If you previously ran `go env -w CGO_ENABLED=1`, you can leave it — the build works either way.
 
 ## Architecture Overview
 
