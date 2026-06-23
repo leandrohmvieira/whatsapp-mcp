@@ -10,6 +10,49 @@ import audio
 MESSAGES_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'whatsapp-bridge', 'store', 'messages.db')
 WHATSAPP_API_BASE_URL = "http://localhost:8080/api"
 
+
+def _parse_db_timestamp(value):
+    """Parse a timestamp string stored by the WhatsApp bridge.
+
+    Handles BOTH formats the bridge has written over its lifetime:
+      * ISO-8601 from the old CGO sqlite driver:   '2023-10-24 20:23:49-03:00'
+      * Go time.Time.String() from the pure-Go modernc.org/sqlite driver:
+        '2026-06-23 12:21:42 -0300 -03'  (date, time, numeric offset, zone abbrev)
+    Python's datetime.fromisoformat() only parses the first. Returns a datetime,
+    or None for empty/None input.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    s = str(value).strip()
+    # Fast path: already ISO-parseable (old rows).
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        pass
+    # Go format -> parts like ['2026-06-23', '12:21:42', '-0300', '-03']
+    parts = s.split()
+    if len(parts) >= 3:
+        date_part, time_part, offset = parts[0], parts[1], parts[2]
+        # Trim Go nanoseconds (9 digits) to microseconds (6) for fromisoformat.
+        if "." in time_part:
+            head, frac = time_part.split(".", 1)
+            time_part = head + "." + frac[:6]
+        # Normalize numeric offset '-0300' -> '-03:00'.
+        if len(offset) == 5 and offset[0] in "+-":
+            offset = offset[:3] + ":" + offset[3:]
+        try:
+            return datetime.fromisoformat(f"{date_part} {time_part}{offset}")
+        except ValueError:
+            pass
+    # Last resort: naive date+time prefix.
+    try:
+        return datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
 @dataclass
 class Message:
     timestamp: datetime
@@ -190,7 +233,7 @@ def list_messages(
         result = []
         for msg in messages:
             message = Message(
-                timestamp=datetime.fromisoformat(msg[0]),
+                timestamp=_parse_db_timestamp(msg[0]),
                 sender=msg[1],
                 chat_name=msg[2],
                 content=msg[3],
@@ -246,7 +289,7 @@ def get_message_context(
             raise ValueError(f"Message with ID {message_id} not found")
             
         target_message = Message(
-            timestamp=datetime.fromisoformat(msg_data[0]),
+            timestamp=_parse_db_timestamp(msg_data[0]),
             sender=msg_data[1],
             chat_name=msg_data[2],
             content=msg_data[3],
@@ -269,7 +312,7 @@ def get_message_context(
         before_messages = []
         for msg in cursor.fetchall():
             before_messages.append(Message(
-                timestamp=datetime.fromisoformat(msg[0]),
+                timestamp=_parse_db_timestamp(msg[0]),
                 sender=msg[1],
                 chat_name=msg[2],
                 content=msg[3],
@@ -292,7 +335,7 @@ def get_message_context(
         after_messages = []
         for msg in cursor.fetchall():
             after_messages.append(Message(
-                timestamp=datetime.fromisoformat(msg[0]),
+                timestamp=_parse_db_timestamp(msg[0]),
                 sender=msg[1],
                 chat_name=msg[2],
                 content=msg[3],
@@ -373,7 +416,7 @@ def list_chats(
             chat = Chat(
                 jid=chat_data[0],
                 name=chat_data[1],
-                last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
+                last_message_time=_parse_db_timestamp(chat_data[2]) if chat_data[2] else None,
                 last_message=chat_data[3],
                 last_sender=chat_data[4],
                 last_is_from_me=chat_data[5]
@@ -466,7 +509,7 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Chat]:
             chat = Chat(
                 jid=chat_data[0],
                 name=chat_data[1],
-                last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
+                last_message_time=_parse_db_timestamp(chat_data[2]) if chat_data[2] else None,
                 last_message=chat_data[3],
                 last_sender=chat_data[4],
                 last_is_from_me=chat_data[5]
@@ -512,7 +555,7 @@ def get_last_interaction(jid: str) -> str:
             return None
             
         message = Message(
-            timestamp=datetime.fromisoformat(msg_data[0]),
+            timestamp=_parse_db_timestamp(msg_data[0]),
             sender=msg_data[1],
             chat_name=msg_data[2],
             content=msg_data[3],
@@ -566,7 +609,7 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Chat]
         return Chat(
             jid=chat_data[0],
             name=chat_data[1],
-            last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
+            last_message_time=_parse_db_timestamp(chat_data[2]) if chat_data[2] else None,
             last_message=chat_data[3],
             last_sender=chat_data[4],
             last_is_from_me=chat_data[5]
@@ -609,7 +652,7 @@ def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Chat]:
         return Chat(
             jid=chat_data[0],
             name=chat_data[1],
-            last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
+            last_message_time=_parse_db_timestamp(chat_data[2]) if chat_data[2] else None,
             last_message=chat_data[3],
             last_sender=chat_data[4],
             last_is_from_me=chat_data[5]
