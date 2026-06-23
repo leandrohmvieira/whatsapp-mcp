@@ -1,3 +1,7 @@
 *.db
 claude_desktop_config.json
 whatsapp.log
+
+# Go bridge build artifact (rebuilt locally via `go build`)
+whatsapp-bridge/whatsapp-bridge
+whatsapp-bridge/whatsapp-bridge.exe
