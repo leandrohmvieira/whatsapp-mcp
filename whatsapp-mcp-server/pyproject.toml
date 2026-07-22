@@ -9,3 +9,13 @@ dependencies = [
     "mcp[cli]>=1.6.0",
     "requests>=2.32.3",
 ]
+
+[project.optional-dependencies]
+# Opt-in media transcription (voice notes / audio-video -> text). Not installed by
+# default. Enable with `uv sync --extra transcription` or `python ../install-media.py`.
+# Covers both backends: faster-whisper (default) and the PyAV decode used by whisper-cpp.
+transcription = [
+    "faster-whisper>=1.0.0",
+    "av>=12.0.0",
+    "numpy>=1.24",
+]

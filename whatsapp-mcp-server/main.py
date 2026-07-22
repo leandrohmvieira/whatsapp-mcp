@@ -1,3 +1,4 @@
+import os
 from typing import List, Dict, Any, Optional
 from dataclasses import asdict
 from mcp.server.fastmcp import FastMCP
@@ -259,6 +260,59 @@ def download_media(message_id: str, chat_jid: str) -> Dict[str, Any]:
             "success": False,
             "message": "Failed to download media"
         }
+
+
+# ---------------------------------------------------------------------------
+# Optional media-transcription feature (opt-in via WHATSAPP_MEDIA_TRANSCRIPTION).
+# When the flag is off (default), the transcribe_media tool is NOT registered and
+# the heavy STT dependencies (faster-whisper / PyAV) are never imported — so users
+# who opt out don't need them installed. To enable: set the env var and install the
+# deps (see README "Media Transcription" and install-media.py).
+# ---------------------------------------------------------------------------
+def _feature_enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+if _feature_enabled("WHATSAPP_MEDIA_TRANSCRIPTION"):
+    from transcribe import transcribe_file
+
+    @mcp.tool()
+    def transcribe_media(message_id: str, chat_jid: str, language: str = "auto") -> Dict[str, Any]:
+        """Transcribe a WhatsApp voice note / audio / video message to text (offline).
+
+        Opt-in feature, active only when WHATSAPP_MEDIA_TRANSCRIPTION is enabled. Downloads
+        the media if not already local, then transcribes it on this machine. Use it to read
+        the content of voice notes and audio/video that otherwise arrive as empty placeholders.
+
+        Args:
+            message_id: The ID of the message containing the audio/video
+            chat_jid: The JID of the chat containing the message
+            language: Spoken-language hint (e.g. "pt", "en") or "auto" to detect (default)
+
+        Returns:
+            A dict with success and, on success, the transcribed text, detected language,
+            duration (seconds), and the backend/model used.
+        """
+        file_path = whatsapp_download_media(message_id, chat_jid)
+        if not file_path:
+            return {"success": False, "message": "Failed to download media"}
+        result = transcribe_file(file_path, language=language)
+        if not result.get("ok"):
+            return {
+                "success": False,
+                "message": result.get("error", "Transcription failed"),
+                "file_path": file_path,
+            }
+        return {
+            "success": True,
+            "text": result["text"],
+            "language": result.get("language"),
+            "duration": result.get("duration"),
+            "backend": result.get("backend"),
+            "model": result.get("model"),
+            "file_path": file_path,
+        }
+
 
 if __name__ == "__main__":
     # Initialize and run the server

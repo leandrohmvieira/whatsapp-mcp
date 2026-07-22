@@ -129,6 +129,7 @@ Claude can access the following tools to interact with WhatsApp:
 - **send_file**: Send a file (image, video, raw audio, document) to a specified recipient
 - **send_audio_message**: Send an audio file as a WhatsApp voice message (requires the file to be an .ogg opus file or ffmpeg must be installed)
 - **download_media**: Download media from a WhatsApp message and get the local file path
+- **transcribe_media**: Transcribe a voice note / audio / video message to text — **opt-in**, only registered when the media-transcription feature is enabled (see below)
 
 ### Media Handling Features
 
@@ -147,6 +148,72 @@ You can send various media types to your WhatsApp contacts:
 #### Media Downloading
 
 By default, just the metadata of the media is stored in the local database. The message will indicate that media was sent. To access this media you need to use the download_media tool which takes the `message_id` and `chat_jid` (which are shown when printing messages containing the meda), this downloads the media and then returns the file path which can be then opened or passed to another tool.
+
+## Media Transcription (optional feature)
+
+Voice notes and audio/video messages arrive as empty placeholders — an agent can `download_media`
+them but can't *read* them. This optional feature adds a **`transcribe_media`** tool that turns them
+into text, **fully offline** (nothing leaves your machine). It is **off by default** and its
+dependencies are not installed unless you opt in, so users who don't need it carry no extra weight.
+
+### 1. Install the dependencies
+
+From the repository root:
+
+```bash
+python install-media.py            # faster-whisper backend (default) — CPU or NVIDIA GPU
+python install-media.py --model small   # also pre-download a model
+```
+
+(Equivalent manual step: `cd whatsapp-mcp-server && uv sync --extra transcription`.)
+
+### 2. Enable the feature
+
+Add the flag to the `whatsapp` server's environment in your MCP client config
+(`claude_desktop_config.json` / Cursor `mcp.json`), then restart the client:
+
+```json
+{
+  "mcpServers": {
+    "whatsapp": {
+      "command": "{{PATH_TO_UV}}",
+      "args": ["--directory", "{{PATH_TO_SRC}}/whatsapp-mcp/whatsapp-mcp-server", "run", "main.py"],
+      "env": { "WHATSAPP_MEDIA_TRANSCRIPTION": "true" }
+    }
+  }
+}
+```
+
+When the flag is off (or unset), `transcribe_media` is simply not registered.
+
+### 3. Use it
+
+Call `transcribe_media(message_id, chat_jid)` (both shown in the placeholder when you print messages).
+It downloads the media if needed and returns `{ text, language, duration, backend, model }`.
+
+### Backends
+
+| Backend | Best for | Setup |
+|---|---|---|
+| **faster-whisper** (default) | CPU, or **NVIDIA** GPU (CUDA) | just `install-media.py` |
+| **whisper-cpp** | **AMD** GPU (Vulkan) or any self-built whisper.cpp | build whisper.cpp + point env vars at it |
+
+Configuration via environment variables on the MCP server:
+
+```
+WHATSAPP_TRANSCRIPTION_BACKEND   faster-whisper | whisper-cpp     (default: faster-whisper)
+WHISPER_MODEL                    faster-whisper size (tiny|base|small|medium|large-v3) — default: small
+WHISPER_LANGUAGE                 force a language (e.g. pt, en) or auto (default: auto)
+WHISPER_DEVICE                   faster-whisper: cpu | cuda | auto (default: auto)
+# whisper-cpp backend only:
+WHISPER_CPP_BIN                  path to a prebuilt whisper-cli(.exe)
+WHISPER_CPP_MODEL                path to a ggml .bin model
+```
+
+> **AMD GPUs:** faster-whisper (CTranslate2) can't use a Radeon — CUDA/CPU only. For GPU acceleration
+> on AMD, build [`whisper.cpp`](https://github.com/ggml-org/whisper.cpp) with the **Vulkan** backend
+> (`cmake -DGGML_VULKAN=ON`, needs the Vulkan SDK), download a ggml model, and set
+> `WHATSAPP_TRANSCRIPTION_BACKEND=whisper-cpp` with `WHISPER_CPP_BIN` / `WHISPER_CPP_MODEL`.
 
 ## Technical Details
 
