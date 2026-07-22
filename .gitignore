@@ -5,3 +5,13 @@ whatsapp.log
 # Go bridge build artifact (rebuilt locally via `go build`)
 whatsapp-bridge/whatsapp-bridge
 whatsapp-bridge/whatsapp-bridge.exe
+whatsapp-bridge/*.bak
+whatsapp-bridge/*.prev
+
+# Bridge runtime logs
+whatsapp-bridge/*.log
+whatsapp-bridge/*.err
+
+# Downloaded media is transient (per-chat subfolders under store/); the DBs are
+# already covered by *.db above.
+whatsapp-bridge/store/*/
