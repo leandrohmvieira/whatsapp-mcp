@@ -3,13 +3,14 @@
 **This file is written for the agent.** If you are Claude Code and the user asked you to install the
 WhatsApp MCP server onto yourself, follow these steps in order.
 
-Four things make this install fail in ways that are hard to diagnose afterwards, so don't improvise
+Five things make this install fail in ways that are hard to diagnose afterwards, so don't improvise
 around them:
 
 - Register the server with an **absolute path to `uv`** — MCP servers don't inherit a login shell's PATH.
 - Clone to a **permanent location** — the registration and the message-database lookup are both path-bound.
 - Start the bridge in a **terminal the user can see** — the first run prints a QR code they must scan.
 - Start the bridge **from inside `whatsapp-bridge/`** — its database path is relative to the working directory.
+- Start it with **`go run main.go`**, not a compiled binary — locked-down Windows machines block unsigned executables.
 
 Human-readable setup instructions, the tool list, and the optional transcription feature are in
 [README.md](./README.md).
@@ -82,14 +83,14 @@ The bridge is a Go program that logs into WhatsApp and keeps a local SQLite copy
 first run it prints a QR code that **the user must scan with their phone**, so it has to run
 somewhere they can actually see it.
 
-Build it first — the binary makes every later restart fast:
+Run it with `go run main.go`. **Do not `go build` a binary and launch that instead** — on managed
+Windows machines an unsigned, freshly built `.exe` sitting in a user directory is exactly what
+application-control policies, SmartScreen and antivirus block, and it has already cost one install.
+`go run` executes out of the Go build cache and doesn't trip those. The startup difference is a
+couple of seconds.
 
-```bash
-cd whatsapp-bridge
-go build -o whatsapp-bridge .        # Windows: go build -o whatsapp-bridge.exe .
-```
-
-The first build downloads dependencies and can take a couple of minutes. No C compiler is needed.
+The first run downloads dependencies and compiles, which can take a couple of minutes. No C compiler
+is needed.
 
 > **Always start the bridge from inside `whatsapp-bridge/`.** It creates its `store/` database
 > directory **relative to the current working directory**, while the Python server always looks for
@@ -101,17 +102,17 @@ Now launch it **in a separate, visible terminal window** so the QR renders prope
 
 ```powershell
 # Windows (PowerShell)
-Start-Process powershell -ArgumentList '-NoExit','-Command',"cd '$REPO\whatsapp-bridge'; .\whatsapp-bridge.exe"
+Start-Process powershell -ArgumentList '-NoExit','-Command',"cd '$REPO\whatsapp-bridge'; go run main.go"
 ```
 
 ```bash
 # macOS
-osascript -e "tell app \"Terminal\" to do script \"cd '$REPO/whatsapp-bridge' && ./whatsapp-bridge\""
+osascript -e "tell app \"Terminal\" to do script \"cd '$REPO/whatsapp-bridge' && go run main.go\""
 ```
 
 ```bash
 # Linux — use whatever terminal is installed
-gnome-terminal -- bash -c "cd '$REPO/whatsapp-bridge' && ./whatsapp-bridge; exec bash"
+gnome-terminal -- bash -c "cd '$REPO/whatsapp-bridge' && go run main.go; exec bash"
 ```
 
 If you cannot open a separate window, ask the user to run the bridge themselves in their own

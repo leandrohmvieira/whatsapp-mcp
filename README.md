@@ -119,8 +119,10 @@ already synced, but nothing new arrives and nothing can be sent.
 
 - Start it again any time with `go run main.go` from the `whatsapp-bridge` folder. After the first
   login it reconnects silently — no QR code.
-- Prefer a faster start? Build it once with `go build -o whatsapp-bridge .` (Windows:
-  `go build -o whatsapp-bridge.exe .`) and then run `./whatsapp-bridge` instead.
+- `go run` is the recommended way to start it, including day to day. You *can* compile a standalone
+  binary with `go build -o whatsapp-bridge .` for a slightly faster start, but on work or otherwise
+  managed Windows machines a freshly built unsigned `.exe` tends to get blocked by application
+  control, SmartScreen or antivirus — `go run` avoids that entirely and only costs a second or two.
 - It uses **`localhost:8080`**, which is fixed. Only one bridge can run at a time, and that port has
   to be free.
 - Sessions expire after about 20 days, after which it shows a fresh QR code to scan.
@@ -280,6 +282,17 @@ WHISPER_CPP_MODEL                path to a ggml .bin model
 - Check that the Go bridge is still running. That's the usual cause.
 - Make sure nothing else is using `localhost:8080`, and that you only have one bridge running.
 - If you once started the bridge from the wrong folder, look for a stray `store/` directory outside `whatsapp-bridge/` and delete it, then restart the bridge from the right place.
+
+### Windows blocks the bridge from starting
+
+If you compiled a binary and Windows refuses to run it — a SmartScreen "Windows protected your PC"
+box, an antivirus warning, an app-control or AppLocker message, or the executable vanishing after
+the build — don't fight it. Start the bridge with `go run main.go` instead, which is the documented
+way anyway. Managed machines routinely block unsigned executables in user folders, and `go run`
+executes from the Go build cache without tripping those rules.
+
+Delete the stray binary if one was built (`whatsapp-bridge.exe` in `whatsapp-bridge/`); nothing
+needs it.
 
 ### Windows: "running scripts is disabled on this system"
 
