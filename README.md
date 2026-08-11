@@ -281,6 +281,33 @@ WHISPER_CPP_MODEL                path to a ggml .bin model
 - Make sure nothing else is using `localhost:8080`, and that you only have one bridge running.
 - If you once started the bridge from the wrong folder, look for a stray `store/` directory outside `whatsapp-bridge/` and delete it, then restart the bridge from the right place.
 
+### Windows: "running scripts is disabled on this system"
+
+PowerShell refuses to run script files until you allow it. You'll see this as
+`... .ps1 cannot be loaded because running scripts is disabled on this system`, most often on the
+`uv` install line or on `claude` itself when it was installed through npm.
+
+Fix it for your account — no admin rights needed:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Close the terminal, open a new one, and re-run the step that failed. `RemoteSigned` permits scripts
+you wrote locally and requires a signature on downloaded ones, which is the usual recommended
+setting.
+
+If it's still blocked, check who's enforcing it:
+
+```powershell
+Get-ExecutionPolicy -List
+```
+
+If **MachinePolicy** or **UserPolicy** is anything other than `Undefined`, your machine is managed by
+Group Policy and the per-user setting can't override it. Work around it per command with
+`powershell -ExecutionPolicy Bypass -Command "..."`, or use `cmd.exe` instead, where the policy
+doesn't apply.
+
 ### Authentication issues
 
 - **QR Code Not Displaying**: If the QR code doesn't appear, restart the bridge. If it still doesn't, your terminal may be too small to draw it — shrink the font size so the whole square fits.

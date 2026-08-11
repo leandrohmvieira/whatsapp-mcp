@@ -36,6 +36,21 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
+**On Windows, expect PowerShell to block scripts.** If any command above fails with
+`running scripts is disabled on this system` — commonly the `uv` installer, or `claude` itself when
+it came from npm and is a `.ps1` shim — fix it before continuing:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+```
+
+That needs no admin rights and affects only this user. The new policy applies to new sessions, so
+re-run the failed command in a fresh shell. If it's still blocked, run `Get-ExecutionPolicy -List`:
+a **MachinePolicy** or **UserPolicy** scope that isn't `Undefined` means Group Policy is enforcing
+it and the per-user setting cannot win. Don't fight it — invoke the blocked command as
+`powershell -ExecutionPolicy Bypass -Command "..."` instead, and tell the user their machine is
+managed so they know why.
+
 Note the **absolute path** to the `uv` executable — you need it in step 4:
 
 ```bash
