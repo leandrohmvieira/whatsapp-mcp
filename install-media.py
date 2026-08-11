@@ -10,10 +10,12 @@ Usage
     python install-media.py --model base           # also pre-download a faster-whisper model
     python install-media.py --backend whisper-cpp  # AMD-GPU (Vulkan) / self-built whisper.cpp
 
-After it finishes, ENABLE the feature by adding this to your MCP client config's env for the
-`whatsapp` server, then restart the client:
+After it finishes, ENABLE the feature by re-registering the server with the flag set, then
+restart Claude Code:
 
-    "env": { "WHATSAPP_MEDIA_TRANSCRIPTION": "true" }
+    claude mcp remove whatsapp --scope user
+    claude mcp add whatsapp --scope user -e WHATSAPP_MEDIA_TRANSCRIPTION=true -- \
+        /path/to/uv --directory /path/to/whatsapp-mcp/whatsapp-mcp-server run main.py
 
 See the "Media Transcription" section of README.md for backend configuration and usage.
 """
@@ -88,8 +90,10 @@ def main() -> int:
               "'Media Transcription' → whisper-cpp.")
 
     print("\n== Done ==")
-    print("Enable the feature: add  \"env\": { \"WHATSAPP_MEDIA_TRANSCRIPTION\": \"true\" }  to the")
-    print("whatsapp server in your MCP client config, then restart the client.")
+    print("Enable the feature by re-registering the server with the flag, then restart Claude Code:")
+    print("  claude mcp remove whatsapp --scope user")
+    print("  claude mcp add whatsapp --scope user -e WHATSAPP_MEDIA_TRANSCRIPTION=true -- \\")
+    print(f"      <path-to-uv> --directory {SERVER} run main.py")
     return 0
 
 
