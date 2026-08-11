@@ -36,7 +36,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Note the **absolute path** to the `uv` executable — you need it in step 3:
+Note the **absolute path** to the `uv` executable — you need it in step 4:
 
 ```bash
 # macOS / Linux
@@ -114,7 +114,38 @@ the background — that is normal, and it is fine to continue.
 
 Leave the bridge running. It must be up whenever the MCP tools are used.
 
-## Step 3 — Register the server with Claude Code
+## Step 3 — Ask whether they want voice-note transcription
+
+**Ask this — don't decide it for them, and don't skip it.** A large share of WhatsApp traffic is
+voice notes, and without this feature they arrive as empty placeholders that no tool can read. Left
+unasked, the user finishes the install not knowing the capability exists.
+
+History sync from step 2 is still running, so this is free time — ask now rather than at the end.
+
+Put the trade-off in one breath and let them choose:
+
+> Voice notes and audio messages can't be read as text unless I install offline transcription — it
+> runs entirely on your machine, nothing is uploaded. It's about a gigabyte of dependencies and a
+> few minutes to install. Want it? You can also add it later.
+
+**If they say no** (the default — say so if they're unsure): continue to step 4 unchanged, and
+mention at hand-off that it can be enabled later from the README.
+
+**If they say yes**, install the dependencies before registering:
+
+```bash
+cd "$REPO/whatsapp-mcp-server" && uv sync --extra transcription
+```
+
+Use that rather than `install-media.py` — the helper script needs a system Python on PATH, which
+`uv` does not provide, and on Windows a bare `python` opens the Microsoft Store instead of failing
+honestly. Then carry the `-e` flag into step 4.
+
+Don't offer to pre-download a Whisper model or tune the backend unless they raise it. The defaults
+work, and the first transcription fetches what it needs. The exception worth mentioning: on an **AMD
+GPU** the default backend runs on CPU only — see "Media Transcription" in [README.md](./README.md).
+
+## Step 4 — Register the server with Claude Code
 
 Use the absolute `uv` path from step 0 and the absolute `REPO` path from step 1:
 
@@ -130,12 +161,17 @@ claude mcp add whatsapp --scope user -- C:\Users\you\.local\bin\uv.exe --directo
 `--scope user` makes WhatsApp available in every project on this machine, which is almost always
 what the user wants. Use `--scope local` to limit it to the current directory.
 
-To enable the optional offline transcription of voice notes at the same time, add
-`-e WHATSAPP_MEDIA_TRANSCRIPTION=true` before the `--`. It also needs its dependencies installed —
-see "Media Transcription" in [README.md](./README.md). Don't install those unless the user asks;
-they're about a gigabyte.
+**If they said yes in step 3**, add the flag before the `--`:
 
-## Step 4 — Verify, then hand off
+```bash
+claude mcp add whatsapp --scope user -e WHATSAPP_MEDIA_TRANSCRIPTION=true -- /absolute/path/to/uv --directory /absolute/path/to/whatsapp-mcp/whatsapp-mcp-server run main.py
+```
+
+The flag and the dependencies are independent: setting it without installing them registers a
+`transcribe_media` tool that fails at call time with `transcription deps missing`, and installing
+them without the flag leaves the tool unregistered. Both halves or neither.
+
+## Step 5 — Verify, then hand off
 
 ```bash
 claude mcp get whatsapp     # should report ✔ Connected
@@ -145,8 +181,9 @@ claude mcp get whatsapp     # should report ✔ Connected
 successfully — it installs the Python dependencies on that first launch, which can take a minute. It
 does **not** prove the bridge is reachable; the user's own test in a moment covers that.
 
-A healthy server exposes **12 tools** (13 with transcription enabled). If the count is lower,
-something failed to load.
+A healthy server exposes **12 tools**, or **13** if they opted into transcription in step 3 — the
+thirteenth is `transcribe_media`. Check the count against their answer: 12 when you expected 13
+means the flag didn't take, and a lower count means something failed to load.
 
 The MCP tools only appear in a Claude Code session that started *after* the server was registered,
 so you cannot call them from this session. Tell the user:
@@ -164,4 +201,6 @@ A healthy server prints nothing and waits on stdin — that silence *is* success
 A failure prints a traceback instead.
 
 Finish by telling the user two things they'll otherwise learn the hard way: the bridge has to stay
-running for the tools to work, and WhatsApp will ask for a fresh QR scan roughly every 20 days.
+running for the tools to work, and WhatsApp will ask for a fresh QR scan roughly every 20 days. If
+they declined transcription in step 3, add that voice notes will read as empty placeholders until
+they enable it, and that the README has the two commands.

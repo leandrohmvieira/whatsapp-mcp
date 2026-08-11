@@ -104,8 +104,13 @@ I'll scan the QR code when you get to that step.
 ```
 
 It clones the repo, builds and starts the bridge, shows you the QR code, and registers the server
-with itself. You still scan the code with your phone and restart Claude Code at the end. The
-instructions it follows live in [AGENTS.md](./AGENTS.md).
+with itself. You still scan the code with your phone and restart Claude Code at the end.
+
+It will also ask, once, whether you want offline transcription of voice notes — a gigabyte of
+dependencies that lets Claude read audio messages instead of seeing empty placeholders. Saying no is
+fine; you can turn it on later from [Media Transcription](#media-transcription-optional-feature).
+
+The instructions it follows live in [AGENTS.md](./AGENTS.md).
 
 ## Keeping the bridge running
 
