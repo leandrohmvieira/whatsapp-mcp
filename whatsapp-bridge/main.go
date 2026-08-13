@@ -24,6 +24,8 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
+	waStore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -882,6 +884,28 @@ func main() {
 		logger.Errorf("Failed to create store directory: %v", err)
 		return
 	}
+
+	// Ask for chat history at pairing time.
+	//
+	// whatsmeow's default DeviceProps leave FullSyncDaysLimit, FullSyncSizeMbLimit
+	// and RecentSyncDaysLimit all nil with RequireFullSync unset, so the client
+	// never actually asks the phone for history -- and a freshly linked device
+	// receives NOTHING but messages that arrive from then on. Older builds
+	// behaved differently, which is why an account can have one device holding
+	// years of history and a newly paired one holding only minutes.
+	//
+	// These MUST be set before pairing: they form part of the registration
+	// handshake, so changing them has no effect on an already-linked device.
+	// Re-pair for them to take effect.
+	waStore.DeviceProps.RequireFullSync = proto.Bool(true)
+	if waStore.DeviceProps.HistorySyncConfig == nil {
+		waStore.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{}
+	}
+	// Mutate in place rather than replacing the struct, so whatsmeow's many
+	// Support* capability flags keep their defaults.
+	waStore.DeviceProps.HistorySyncConfig.FullSyncDaysLimit = proto.Uint32(3650)
+	waStore.DeviceProps.HistorySyncConfig.FullSyncSizeMbLimit = proto.Uint32(102400)
+	waStore.DeviceProps.HistorySyncConfig.StorageQuotaMb = proto.Uint32(102400)
 
 	// Same busy_timeout reasoning as messages.db above. Observed on a fresh
 	// pairing: 812 prekey uploads, incoming messages and the app-state sync all
