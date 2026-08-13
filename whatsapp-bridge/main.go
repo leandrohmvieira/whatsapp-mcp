@@ -54,7 +54,11 @@ func NewMessageStore() (*MessageStore, error) {
 	}
 
 	// Open SQLite database for messages
-	db, err := sql.Open("sqlite", "file:store/messages.db?_pragma=foreign_keys(1)")
+	// busy_timeout is essential, not a tuning knob: the driver defaults to 0, so
+	// ANY write contention fails instantly with SQLITE_BUSY instead of waiting.
+	// A history sync inserting thousands of rows while live messages arrive is
+	// exactly that contention, and the inserts are simply lost when it happens.
+	db, err := sql.Open("sqlite", "file:store/messages.db?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open message database: %v", err)
 	}
@@ -879,7 +883,11 @@ func main() {
 		return
 	}
 
-	container, err := sqlstore.New(context.Background(), "sqlite", "file:store/whatsapp.db?_pragma=foreign_keys(1)", dbLog)
+	// Same busy_timeout reasoning as messages.db above. Observed on a fresh
+	// pairing: 812 prekey uploads, incoming messages and the app-state sync all
+	// hit this store at once, producing "failed to load session ... database is
+	// locked (5)" and a failed app-state sync within seconds of connecting.
+	container, err := sqlstore.New(context.Background(), "sqlite", "file:store/whatsapp.db?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", dbLog)
 	if err != nil {
 		logger.Errorf("Failed to connect to database: %v", err)
 		return
