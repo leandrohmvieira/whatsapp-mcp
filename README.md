@@ -283,6 +283,39 @@ WHISPER_CPP_MODEL                path to a ggml .bin model
 - Make sure nothing else is using `localhost:8080`, and that you only have one bridge running.
 - If you once started the bridge from the wrong folder, look for a stray `store/` directory outside `whatsapp-bridge/` and delete it, then restart the bridge from the right place.
 
+> **A dead bridge looks exactly like a quiet week.** The MCP server reads `store/messages.db`
+> directly and never talks to the bridge, so every tool keeps answering with plausible — but frozen —
+> data after the bridge exits. Judge it by *freshness*, not by whether a query returned rows: if the
+> newest message is older than your actual last conversation, the bridge is gone. Nothing will tell
+> you.
+
+### Claude only sees recent messages — the history is missing
+
+Your chat history should arrive in one push shortly after you link the phone. If the store only
+contains messages from *after* you paired, that push was **missed rather than withheld**.
+
+It arrives seconds to minutes after the scan, and there is no automatic retry. Anything that
+restarts the process in that window loses it permanently — most easily by rebuilding the binary
+right after pairing. So after linking, **leave the bridge running and untouched for a few minutes**
+and watch for `Received history sync event with N conversations`.
+
+To request it again without re-pairing:
+
+```bash
+curl -X POST http://localhost:8080/api/history-sync            # default: 100 messages
+curl -X POST http://localhost:8080/api/history-sync \
+     -H 'Content-Type: application/json' -d '{"count": 500}'
+```
+
+A `200` means the request was *sent*, not that history has been stored — it arrives asynchronously,
+so watch the bridge log. If nothing comes back at all, re-pairing is the reliable fix: the initial
+push after a fresh link is far more complete than an on-demand request.
+
+**Pairing a headless host** (a server, a container — anywhere you can't point a phone at the
+terminal): the bridge prints the raw pairing string next to the QR block. Render *that* as a QR
+image and scan it. Don't patch the source to print it and then revert the patch — the rebuild that
+follows is exactly what eats the history sync.
+
 ### Windows blocks the bridge from starting
 
 If you compiled a binary and Windows refuses to run it — a SmartScreen "Windows protected your PC"

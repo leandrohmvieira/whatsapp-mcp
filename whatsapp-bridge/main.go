@@ -490,6 +490,19 @@ type DownloadMediaResponse struct {
 	Path     string `json:"path,omitempty"`
 }
 
+// HistorySyncRequest represents the request body for the history sync API.
+// Count is optional and defaults to 100.
+type HistorySyncRequest struct {
+	Count int `json:"count,omitempty"`
+}
+
+// HistorySyncResponse represents the response for the history sync API
+type HistorySyncResponse struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	Requested int    `json:"requested,omitempty"`
+}
+
 // Store additional media info in the database
 func (store *MessageStore) StoreMediaInfo(id, chatJID, url string, mediaKey, fileSHA256, fileEncSHA256 []byte, fileLength uint64) error {
 	_, err := store.db.Exec(
@@ -800,6 +813,46 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		})
 	})
 
+	// Trigger a history sync on demand.
+	//
+	// WhatsApp pushes an initial history sync when a device is paired, but there
+	// is no automatic retry: if the process restarts before it lands (a rebuild,
+	// a service restart), that history is simply never delivered and the store
+	// stays empty while every query still answers normally. This endpoint is the
+	// retry path. Messages arrive asynchronously -- a 200 here means the request
+	// was sent, not that history has been stored.
+	http.HandleFunc("/api/history-sync", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Body is optional -- an empty POST requests the default of 100.
+		var req HistorySyncRequest
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+
+		count, err := requestHistorySync(client, req.Count)
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(HistorySyncResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to request history sync: %v", err),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(HistorySyncResponse{
+			Success:   true,
+			Requested: count,
+			Message:   "History sync requested. It arrives asynchronously -- watch the log for 'Received history sync event'.",
+		})
+	})
+
 	// Start the server
 	serverAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)
@@ -897,6 +950,13 @@ func main() {
 			if evt.Event == "code" {
 				fmt.Println("\nScan this QR code with your WhatsApp app:")
 				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
+				// Also emit the raw pairing string. On a headless host the half-block
+				// QR above is unusable (no terminal to point a phone at), and without
+				// this line the only way to pair is to patch main.go to print it,
+				// rebuild, pair, then revert and rebuild again -- which restarts the
+				// process during the history-sync window and silently loses the sync.
+				// Render this string as a QR image instead and leave the binary alone.
+				fmt.Printf("\nPairing code (headless: render as a QR image, don't rebuild):\n%s\n\n", evt.Code)
 			} else if evt.Event == "success" {
 				connected <- true
 				break
@@ -907,6 +967,10 @@ func main() {
 		select {
 		case <-connected:
 			fmt.Println("\nSuccessfully connected and authenticated!")
+			fmt.Println("Leave this process RUNNING and untouched for the next few minutes:")
+			fmt.Println("WhatsApp pushes the initial history sync now, and restarting or")
+			fmt.Println("swapping the binary before it arrives loses that history for good.")
+			fmt.Println("Watch for 'Received history sync event' below to confirm it landed.")
 		case <-time.After(3 * time.Minute):
 			logger.Errorf("Timeout waiting for QR code scan")
 			return
@@ -1174,28 +1238,37 @@ func handleHistorySync(client *whatsmeow.Client, messageStore *MessageStore, his
 	fmt.Printf("History sync complete. Stored %d messages.\n", syncedCount)
 }
 
-// Request history sync from the server
-func requestHistorySync(client *whatsmeow.Client) {
+// Request history sync from the server.
+//
+// The initial history sync is pushed automatically when a device is paired, but
+// that push is easy to miss -- it arrives minutes after the scan, so anything
+// that restarts the process in that window (rebuilding the binary, a service
+// restart) drops it, and there is no automatic retry. This is the manual retry
+// path, exposed over the REST API as POST /api/history-sync.
+//
+// Returns the number of messages requested and an error, so callers can report
+// the outcome instead of only printing it.
+func requestHistorySync(client *whatsmeow.Client, count int) (int, error) {
 	if client == nil {
-		fmt.Println("Client is not initialized. Cannot request history sync.")
-		return
+		return 0, fmt.Errorf("client is not initialized")
 	}
 
 	if !client.IsConnected() {
-		fmt.Println("Client is not connected. Please ensure you are connected to WhatsApp first.")
-		return
+		return 0, fmt.Errorf("client is not connected to WhatsApp")
 	}
 
 	if client.Store.ID == nil {
-		fmt.Println("Client is not logged in. Please scan the QR code first.")
-		return
+		return 0, fmt.Errorf("client is not logged in -- scan the QR code first")
+	}
+
+	if count <= 0 {
+		count = 100
 	}
 
 	// Build and send a history sync request
-	historyMsg := client.BuildHistorySyncRequest(nil, 100)
+	historyMsg := client.BuildHistorySyncRequest(nil, count)
 	if historyMsg == nil {
-		fmt.Println("Failed to build history sync request.")
-		return
+		return 0, fmt.Errorf("failed to build history sync request")
 	}
 
 	_, err := client.SendMessage(context.Background(), types.JID{
@@ -1205,9 +1278,11 @@ func requestHistorySync(client *whatsmeow.Client) {
 
 	if err != nil {
 		fmt.Printf("Failed to request history sync: %v\n", err)
-	} else {
-		fmt.Println("History sync requested. Waiting for server response...")
+		return 0, err
 	}
+
+	fmt.Printf("History sync requested (%d messages). Waiting for server response...\n", count)
+	return count, nil
 }
 
 // analyzeOggOpus tries to extract duration and generate a simple waveform from an Ogg Opus file
