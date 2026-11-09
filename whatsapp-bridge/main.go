@@ -868,6 +868,47 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 	})
 
 	// Start the server
+	// Handler for checking which phone numbers are registered on WhatsApp.
+	// POST {"phones": ["5534999999999", ...]} -> [{query, jid, is_in, business}]
+	http.HandleFunc("/api/check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Phones []string `json:"phones"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Phones) == 0 {
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+		phones := make([]string, len(req.Phones))
+		for i, p := range req.Phones {
+			phones[i] = "+" + strings.TrimPrefix(p, "+")
+		}
+		resp, err := client.IsOnWhatsApp(context.Background(), phones)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		type item struct {
+			Query    string `json:"query"`
+			JID      string `json:"jid"`
+			IsIn     bool   `json:"is_in"`
+			Business string `json:"business,omitempty"`
+		}
+		out := make([]item, 0, len(resp))
+		for _, x := range resp {
+			it := item{Query: x.Query, JID: x.JID.String(), IsIn: x.IsIn}
+			if x.VerifiedName != nil && x.VerifiedName.Details != nil {
+				it.Business = x.VerifiedName.Details.GetVerifiedName()
+			}
+			out = append(out, it)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(out)
+	})
+
 	serverAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)
 
