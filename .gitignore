@@ -15,3 +15,11 @@ whatsapp-bridge/*.err
 # Downloaded media is transient (per-chat subfolders under store/); the DBs are
 # already covered by *.db above.
 whatsapp-bridge/store/*/
+# Dated local backups of the bridge source/binary, kept beside it during upgrades
+whatsapp-bridge/*.bak-*
+whatsapp-bridge/*.old-*
+whatsapp-bridge/*.pre405
+whatsapp-bridge/*.prev*
+
+# Media-retry runtime output (results log, debug blobs)
+whatsapp-bridge/store/_mediaretry_*

@@ -643,7 +643,9 @@ func downloadMedia(client *whatsmeow.Client, messageStore *MessageStore, message
 	}
 
 	// If we don't have all the media info we need, we can't download
-	if url == "" || len(mediaKey) == 0 || len(fileSHA256) == 0 || len(fileEncSHA256) == 0 || fileLength == 0 {
+	// A row with no URL is still downloadable once it has a direct path (e.g. one
+	// obtained through /api/media_retry).
+	if (url == "" && directPath == "") || len(mediaKey) == 0 || len(fileSHA256) == 0 || len(fileEncSHA256) == 0 || fileLength == 0 {
 		return false, "", "", "", fmt.Errorf("incomplete media information for download")
 	}
 
@@ -867,6 +869,9 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		})
 	})
 
+	// Recover expired media by asking our own phone to re-upload it (mediaretry.go)
+	registerMediaRetryHandler(client, messageStore)
+
 	// Start the server
 	// Handler for checking which phone numbers are registered on WhatsApp.
 	// POST {"phones": ["5534999999999", ...]} -> [{query, jid, is_in, business}]
@@ -922,7 +927,12 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 
 func main() {
 	// Set up logger
-	logger := waLog.Stdout("Client", "INFO", true)
+	// WA_LOG_LEVEL=DEBUG logs every XML node sent/received (diagnostics only; noisy).
+	logLevel := os.Getenv("WA_LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "INFO"
+	}
+	logger := waLog.Stdout("Client", logLevel, true)
 	logger.Infof("Starting WhatsApp client...")
 
 	// Create database connection for storing session data
@@ -1004,6 +1014,10 @@ func main() {
 		case *events.HistorySync:
 			// Process history sync events
 			handleHistorySync(client, messageStore, v, logger)
+
+		case *events.MediaRetry:
+			// Answer to a media retry receipt (see mediaretry.go)
+			dispatchMediaRetry(v)
 
 		case *events.Connected:
 			logger.Infof("Connected to WhatsApp")
